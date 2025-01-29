@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Meme Coin Mario Clone</title>
+    <title>Infinite Meme Coin Mario Clone</title>
     <style>
         body {
             margin: 0;
@@ -12,7 +12,7 @@
         }
         #gameCanvas {
             display: block;
-            background: linear-gradient(#70c5ce, #ffffff);
+            background: linear-gradient(to bottom, #70c5ce 0%, #ffffff 100%);
         }
         .coin-tooltip {
             position: absolute;
@@ -97,29 +97,42 @@
                     this.vy = 0;
                     this.onGround = true;
                 }
-
-                // Boundaries (allow movement beyond canvas for level progression)
-                // Optional: Implement boundaries if needed
             }
 
-            draw() {
+            draw(cameraX) {
                 ctx.fillStyle = this.color;
-                ctx.fillRect(this.x - level.cameraX, this.y, this.width, this.height);
+                ctx.fillRect(this.x - cameraX, this.y, this.width, this.height);
                 // Simple face
                 ctx.fillStyle = '#000';
-                ctx.fillRect(this.x - level.cameraX + 15, this.y + 15, 5, 5);
-                ctx.fillRect(this.x - level.cameraX + 30, this.y + 15, 5, 5);
-                ctx.fillRect(this.x - level.cameraX + 20, this.y + 30, 10, 5);
+                ctx.fillRect(this.x - cameraX + 15, this.y + 15, 5, 5);
+                ctx.fillRect(this.x - cameraX + 30, this.y + 15, 5, 5);
+                ctx.fillRect(this.x - cameraX + 20, this.y + 30, 10, 5);
             }
         }
 
         class Platform {
-            constructor(x, y, width, height) {
+            constructor(x, y, width, height, type = 'static') {
                 this.x = x; // World coordinate
                 this.y = y; // World coordinate
                 this.width = width;
                 this.height = height;
+                this.type = type; // 'static' or 'moving'
                 this.color = '#8B4513';
+                this.direction = 1; // 1 for right/down, -1 for left/up
+                this.range = 100; // Movement range
+                this.speed = 2; // Movement speed
+                this.initialX = x;
+                this.initialY = y;
+            }
+
+            update() {
+                if (this.type === 'moving') {
+                    // Simple horizontal movement
+                    this.x += this.speed * this.direction;
+                    if (this.x > this.initialX + this.range || this.x < this.initialX - this.range) {
+                        this.direction *= -1;
+                    }
+                }
             }
 
             draw(cameraX) {
@@ -168,34 +181,77 @@
 
         class Level {
             constructor() {
-                this.platforms = [
-                    new Platform(0, canvas.height - 100, 800, 100), // Ground
-                    new Platform(300, canvas.height - 200, 100, 20),
-                    new Platform(500, canvas.height - 300, 150, 20),
-                    new Platform(750, canvas.height - 250, 100, 20)
-                ];
-
-                this.coinTypes = ['doge', 'shiba', 'monacoin', 'baby'];
-                this.coins = [
-                    new Coin(320, canvas.height - 220, 'doge'),
-                    new Coin(520, canvas.height - 320, 'shiba'),
-                    new Coin(770, canvas.height - 270, 'monacoin'),
-                    new Coin(600, canvas.height - 320, 'baby')
-                ];
-
+                this.platforms = [];
+                this.coins = [];
                 this.cameraX = 0;
-                this.levelWidth = 1500; // Total width of the level
+                this.spawnX = 800; // Initial spawn position
+                this.spawnInterval = 300; // Distance between spawns
+                this.platformHeightVariation = 50;
+                this.minPlatformWidth = 100;
+                this.maxPlatformWidth = 200;
+                this.minPlatformGap = 100;
+                this.maxPlatformGap = 200;
+                this.lastPlatform = {x: 0, y: canvas.height - 100};
+                this.generateInitialPlatforms();
+            }
+
+            generateInitialPlatforms() {
+                // Create the ground
+                this.platforms.push(new Platform(0, canvas.height - 100, 800, 100));
+
+                // Generate initial platforms
+                for (let i = 0; i < 5; i++) {
+                    this.spawnPlatform();
+                }
+            }
+
+            spawnPlatform() {
+                const gap = getRandomInt(this.minPlatformGap, this.maxPlatformGap);
+                const width = getRandomInt(this.minPlatformWidth, this.maxPlatformWidth);
+                const height = 20;
+                const maxHeight = canvas.height - 150;
+                const minHeight = canvas.height - 300;
+                let y = this.lastPlatform.y - getRandomInt(-50, 50);
+                y = Math.max(minHeight, Math.min(y, maxHeight));
+
+                const x = this.lastPlatform.x + this.lastPlatform.width + gap;
+
+                // Randomly decide if the platform is moving
+                const type = Math.random() < 0.3 ? 'moving' : 'static';
+                this.platforms.push(new Platform(x, y, width, height, type));
+
+                // Spawn a coin on the platform
+                const coinType = this.randomCoinType();
+                const coinX = x + width / 2 - 10;
+                const coinY = y - 30;
+                this.coins.push(new Coin(coinX, coinY, coinType));
+
+                // Update last platform
+                this.lastPlatform = {x: x, y: y};
+            }
+
+            randomCoinType() {
+                const types = ['doge', 'shiba', 'monacoin', 'baby'];
+                return types[getRandomInt(0, types.length - 1)];
             }
 
             update(player) {
                 // Simple camera following
-                if (player.x - this.cameraX > canvas.width / 2 && this.cameraX < this.levelWidth - canvas.width) {
+                if (player.x - this.cameraX > canvas.width / 2) {
                     this.cameraX += player.vx;
                 }
 
-                // Prevent camera from moving beyond level boundaries
-                if (this.cameraX < 0) this.cameraX = 0;
-                if (this.cameraX > this.levelWidth - canvas.width) this.cameraX = this.levelWidth - canvas.width;
+                // Spawn new platforms as needed
+                while (this.lastPlatform.x < this.cameraX + canvas.width + this.spawnInterval) {
+                    this.spawnPlatform();
+                }
+
+                // Update moving platforms
+                this.platforms.forEach(platform => platform.update());
+
+                // Remove off-screen platforms and coins
+                this.platforms = this.platforms.filter(platform => platform.x + platform.width > this.cameraX - 200);
+                this.coins = this.coins.filter(coin => coin.x + coin.size > this.cameraX - 200);
             }
 
             draw() {
@@ -215,6 +271,10 @@
                     }
                 });
             }
+        }
+
+        function getRandomInt(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
         }
 
         const player = new Player();
@@ -255,7 +315,7 @@
                 }
             });
 
-            // Update level (camera movement)
+            // Update level (camera movement and spawn platforms)
             level.update(player);
 
             // Coin collection
@@ -267,13 +327,6 @@
                 player.vy = 0;
                 player.onGround = true;
             }
-
-            // Check for level completion
-            if (level.cameraX >= level.levelWidth - canvas.width && player.x >= level.levelWidth - 100) {
-                alert(`Congratulations! You've completed the level!\nYour Score: ${score}`);
-                // Restart the game
-                window.location.reload();
-            }
         }
 
         function draw() {
@@ -283,7 +336,7 @@
             level.draw();
 
             // Draw player
-            player.draw();
+            player.draw(level.cameraX);
 
             // Draw score (handled by HTML div)
         }
