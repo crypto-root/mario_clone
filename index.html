@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Meme Coin Mario Clone</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #70c5ce;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #gameCanvas {
+            display: block;
+            background: linear-gradient(#70c5ce, #ffffff);
+        }
+        .coin-tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 5px;
+            pointer-events: none;
+            font-size: 14px;
+            display: none;
+            z-index: 10;
+        }
+        .score-board {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #000;
+            font-size: 20px;
+            font-weight: bold;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <div class="coin-tooltip" id="coinTooltip"></div>
+    <div class="score-board" id="scoreBoard">Score: 0</div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const tooltip = document.getElementById('coinTooltip');
+        const scoreBoard = document.getElementById('scoreBoard');
+
+        const keys = {};
+        document.addEventListener('keydown', (e) => { keys[e.code] = true; });
+        document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+        class Player {
+            constructor() {
+                this.width = 50;
+                this.height = 50;
+                this.x = 100; // World coordinate
+                this.y = canvas.height - this.height - 100; // World coordinate
+                this.vx = 0;
+                this.vy = 0;
+                this.speed = 7; // Increased speed
+                this.jumpStrength = 20; // Increased jump strength
+                this.onGround = false;
+                this.color = '#FF5733';
+                this.direction = 'right';
+            }
+
+            update() {
+                // Horizontal movement
+                if (keys['ArrowRight'] || keys['KeyD']) {
+                    this.vx = this.speed;
+                    this.direction = 'right';
+                } else if (keys['ArrowLeft'] || keys['KeyA']) {
+                    this.vx = -this.speed;
+                    this.direction = 'left';
+                } else {
+                    this.vx = 0;
+                }
+
+                // Jump
+                if ((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && this.onGround) {
+                    this.vy = -this.jumpStrength;
+                    this.onGround = false;
+                }
+
+                // Apply gravity
+                this.vy += 1.2; // Increased gravity for faster fall
+                if (this.vy > 25) this.vy = 25; // Terminal velocity
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Ground collision
+                if (this.y + this.height >= canvas.height - 100) {
+                    this.y = canvas.height - this.height - 100;
+                    this.vy = 0;
+                    this.onGround = true;
+                }
+
+                // Boundaries (allow movement beyond canvas for level progression)
+                // Optional: Implement boundaries if needed
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x - level.cameraX, this.y, this.width, this.height);
+                // Simple face
+                ctx.fillStyle = '#000';
+                ctx.fillRect(this.x - level.cameraX + 15, this.y + 15, 5, 5);
+                ctx.fillRect(this.x - level.cameraX + 30, this.y + 15, 5, 5);
+                ctx.fillRect(this.x - level.cameraX + 20, this.y + 30, 10, 5);
+            }
+        }
+
+        class Platform {
+            constructor(x, y, width, height) {
+                this.x = x; // World coordinate
+                this.y = y; // World coordinate
+                this.width = width;
+                this.height = height;
+                this.color = '#8B4513';
+            }
+
+            draw(cameraX) {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x - cameraX, this.y, this.width, this.height);
+            }
+        }
+
+        class Coin {
+            constructor(x, y, type) {
+                this.x = x; // World coordinate
+                this.y = y; // World coordinate
+                this.size = 20;
+                this.type = type; // e.g., 'doge', 'shiba', etc.
+                this.collected = false;
+                this.image = this.loadImage(type);
+            }
+
+            loadImage(type) {
+                const images = {
+                    'doge': 'https://i.imgur.com/4AI6gkY.png', // Dogecoin
+                    'shiba': 'https://i.imgur.com/HGz3cF1.png', // Shiba Inu
+                    'monacoin': 'https://i.imgur.com/Kd0fJQv.png', // Monacoin
+                    'baby': 'https://i.imgur.com/Ba2VYHk.png' // Baby Doge
+                };
+                const img = new Image();
+                img.src = images[type] || 'https://i.imgur.com/4AI6gkY.png';
+                return img;
+            }
+
+            draw(cameraX) {
+                if (!this.collected) {
+                    ctx.drawImage(this.image, this.x - cameraX, this.y, this.size, this.size);
+                }
+            }
+
+            isColliding(player) {
+                // Collision detection using world coordinates
+                return !this.collected &&
+                    player.x < this.x + this.size &&
+                    player.x + player.width > this.x &&
+                    player.y < this.y + this.size &&
+                    player.y + player.height > this.y;
+            }
+        }
+
+        class Level {
+            constructor() {
+                this.platforms = [
+                    new Platform(0, canvas.height - 100, 800, 100), // Ground
+                    new Platform(300, canvas.height - 200, 100, 20),
+                    new Platform(500, canvas.height - 300, 150, 20),
+                    new Platform(750, canvas.height - 250, 100, 20)
+                ];
+
+                this.coinTypes = ['doge', 'shiba', 'monacoin', 'baby'];
+                this.coins = [
+                    new Coin(320, canvas.height - 220, 'doge'),
+                    new Coin(520, canvas.height - 320, 'shiba'),
+                    new Coin(770, canvas.height - 270, 'monacoin'),
+                    new Coin(600, canvas.height - 320, 'baby')
+                ];
+
+                this.cameraX = 0;
+                this.levelWidth = 1500; // Total width of the level
+            }
+
+            update(player) {
+                // Simple camera following
+                if (player.x - this.cameraX > canvas.width / 2 && this.cameraX < this.levelWidth - canvas.width) {
+                    this.cameraX += player.vx;
+                }
+
+                // Prevent camera from moving beyond level boundaries
+                if (this.cameraX < 0) this.cameraX = 0;
+                if (this.cameraX > this.levelWidth - canvas.width) this.cameraX = this.levelWidth - canvas.width;
+            }
+
+            draw() {
+                // Draw platforms
+                this.platforms.forEach(platform => platform.draw(this.cameraX));
+
+                // Draw coins
+                this.coins.forEach(coin => coin.draw(this.cameraX));
+            }
+
+            checkCoinCollection(player) {
+                this.coins.forEach(coin => {
+                    if (coin.isColliding(player)) {
+                        coin.collected = true;
+                        score += 10;
+                        updateScore();
+                    }
+                });
+            }
+        }
+
+        const player = new Player();
+        const level = new Level();
+
+        let score = 0;
+
+        function updateScore() {
+            scoreBoard.textContent = `Score: ${score}`;
+        }
+
+        function showTooltip(text, x, y) {
+            tooltip.style.left = `${x + 10}px`;
+            tooltip.style.top = `${y - 30}px`;
+            tooltip.textContent = text;
+            tooltip.style.display = 'block';
+        }
+
+        function hideTooltip() {
+            tooltip.style.display = 'none';
+        }
+
+        function update() {
+            player.update();
+
+            // Platform collision
+            level.platforms.forEach(platform => {
+                // Check if player is falling and lands on the platform
+                if (
+                    player.x < platform.x + platform.width &&
+                    player.x + player.width > platform.x &&
+                    player.y + player.height <= platform.y &&
+                    player.y + player.height + player.vy >= platform.y
+                ) {
+                    player.y = platform.y - player.height;
+                    player.vy = 0;
+                    player.onGround = true;
+                }
+            });
+
+            // Update level (camera movement)
+            level.update(player);
+
+            // Coin collection
+            level.checkCoinCollection(player);
+
+            // Prevent player from falling below the ground
+            if (player.y + player.height > canvas.height - 100) {
+                player.y = canvas.height - player.height - 100;
+                player.vy = 0;
+                player.onGround = true;
+            }
+
+            // Check for level completion
+            if (level.cameraX >= level.levelWidth - canvas.width && player.x >= level.levelWidth - 100) {
+                alert(`Congratulations! You've completed the level!\nYour Score: ${score}`);
+                // Restart the game
+                window.location.reload();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw level
+            level.draw();
+
+            // Draw player
+            player.draw();
+
+            // Draw score (handled by HTML div)
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Tooltip handling
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left + level.cameraX;
+            const mouseY = e.clientY - rect.top;
+            let hovered = false;
+            level.coins.forEach(coin => {
+                if (!coin.collected &&
+                    mouseX >= coin.x &&
+                    mouseX <= coin.x + coin.size &&
+                    mouseY >= coin.y &&
+                    mouseY <= coin.y + coin.size) {
+                    showTooltip(`${coin.type.toUpperCase()} Coin`, e.clientX, e.clientY);
+                    hovered = true;
+                }
+            });
+            if (!hovered) {
+                hideTooltip();
+            }
+        });
+
+        canvas.addEventListener('mouseleave', hideTooltip);
+
+        // Start the game
+        gameLoop();
+    </script>
+</body>
+</html>
